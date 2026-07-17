@@ -17,6 +17,42 @@ struct ActivityAgentTests {
         #expect(store.load() == value)
     }
 
+    @Test func storeRoundTripsReportedSnapshotDetails() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathComponent("activity.json")
+        let store = ActivityStore(fileURL: url)
+        let slots = [PublicActivitySlot(
+            id: "foreground",
+            kind: "application",
+            appId: "com.microsoft.VSCode",
+            title: "Visual Studio Code",
+            subtitle: nil,
+            source: nil
+        )]
+        let value = PersistedActivity(events: [
+            ActivityEvent(
+                timestamp: Date(timeIntervalSince1970: 1_784_182_800),
+                kind: .snapshotSent,
+                detail: "快照 #42 · 应用：Visual Studio Code",
+                sequence: 42,
+                slots: slots
+            )
+        ])
+
+        try store.save(value)
+
+        #expect(store.load() == value)
+    }
+
+    @Test func decodesEventsCreatedBeforeSnapshotDetails() throws {
+        let data = Data(#"{"events":[{"id":"D982F82B-1F42-4D56-8859-0A099F844841","timestamp":0,"kind":"connected","detail":"测试"}]}"#.utf8)
+        let value = try JSONDecoder().decode(PersistedActivity.self, from: data)
+
+        #expect(value.events.first?.sequence == nil)
+        #expect(value.events.first?.slots == nil)
+    }
+
     @Test func policyOnlyPublishesAllowlistedApplications() {
         let settings = MonitorSettings(
             endpoint: "ws://localhost",

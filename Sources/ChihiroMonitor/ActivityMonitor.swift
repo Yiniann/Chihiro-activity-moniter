@@ -240,7 +240,12 @@ final class ActivityMonitor: ObservableObject {
                 try await self.realtime.send(message)
                 self.lastReportAt = Date()
                 self.lastError = nil
-                self.record(.snapshotSent, detail: self.publicSlots.isEmpty ? "已上报空快照" : "已上报 \(self.publicSlots.count) 个公开状态")
+                self.record(
+                    .snapshotSent,
+                    detail: self.snapshotDetail(for: message),
+                    sequence: message.sequence,
+                    slots: message.slots
+                )
             } catch {
                 self.lastError = error.localizedDescription
             }
@@ -272,8 +277,30 @@ final class ActivityMonitor: ObservableObject {
         reconnect()
     }
 
-    private func record(_ kind: ActivityEvent.Kind, detail: String) {
-        events.insert(ActivityEvent(kind: kind, detail: detail), at: 0)
+    private func snapshotDetail(for snapshot: AgentSnapshot) -> String {
+        guard !snapshot.slots.isEmpty else { return "快照 #\(snapshot.sequence) · 空快照" }
+        let values = snapshot.slots.map { slot in
+            let label = switch slot.kind {
+            case "music": "音乐"
+            case "video": "视频"
+            case "media": "媒体"
+            default: "应用"
+            }
+            return "\(label)：\(slot.title)"
+        }
+        return "快照 #\(snapshot.sequence) · " + values.joined(separator: "；")
+    }
+
+    private func record(
+        _ kind: ActivityEvent.Kind,
+        detail: String,
+        sequence: UInt64? = nil,
+        slots: [PublicActivitySlot]? = nil
+    ) {
+        events.insert(
+            ActivityEvent(kind: kind, detail: detail, sequence: sequence, slots: slots),
+            at: 0
+        )
         if events.count > 100 { events = Array(events.prefix(100)) }
         persist()
     }

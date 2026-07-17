@@ -164,21 +164,99 @@ struct PublicSlotRow: View {
 
 struct EventRow: View {
     let event: ActivityEvent
+    var showsSnapshotDetails = false
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: event.kind.symbol)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(event.kind == .connected ? ChihiroPalette.green : ChihiroPalette.blue)
-                .frame(width: 28, height: 28)
-                .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 6))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(event.kind.title).font(.subheadline.weight(.medium))
-                Text(event.detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+        VStack(alignment: .leading, spacing: showsSnapshotDetails ? 10 : 0) {
+            HStack(spacing: 12) {
+                Image(systemName: event.kind.symbol)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(event.kind == .connected ? ChihiroPalette.green : ChihiroPalette.blue)
+                    .frame(width: 28, height: 28)
+                    .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 6))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(event.kind.title).font(.subheadline.weight(.medium))
+                    Text(event.detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(showsSnapshotDetails ? 2 : 1)
+                }
+                Spacer(minLength: 12)
+                Text(event.timestamp, style: .relative).font(.caption).foregroundStyle(.tertiary)
             }
-            Spacer(minLength: 12)
-            Text(event.timestamp, style: .relative).font(.caption).foregroundStyle(.tertiary)
+
+            if showsSnapshotDetails, event.kind == .snapshotSent, let slots = event.slots {
+                SnapshotEventDetails(slots: slots)
+                    .padding(.leading, 40)
+            }
         }
         .padding(.vertical, 8)
+    }
+}
+
+private struct SnapshotEventDetails: View {
+    let slots: [PublicActivitySlot]
+
+    var body: some View {
+        if slots.isEmpty {
+            Label("没有公开状态", systemImage: "eye.slash")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } else {
+            VStack(alignment: .leading, spacing: 9) {
+                ForEach(slots) { slot in
+                    HStack(alignment: .top, spacing: 9) {
+                        Image(systemName: symbol(for: slot.kind))
+                            .foregroundStyle(ChihiroPalette.blue)
+                            .frame(width: 18)
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 6) {
+                                Text(label(for: slot.kind))
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                Text(slot.title)
+                                    .font(.caption.weight(.medium))
+                            }
+                            if !metadata(for: slot).isEmpty {
+                                Text(metadata(for: slot))
+                                    .font(.caption2.monospaced())
+                                    .foregroundStyle(.tertiary)
+                                    .textSelection(.enabled)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func metadata(for slot: PublicActivitySlot) -> String {
+        [slot.appId, slot.subtitle, slot.source]
+            .compactMap { (value: String?) -> String? in
+                guard let value, !value.isEmpty else { return nil }
+                return value
+            }
+            .reduce(into: [String]()) { values, value in
+                if !values.contains(value) { values.append(value) }
+            }
+            .joined(separator: " · ")
+    }
+
+    private func label(for kind: String) -> String {
+        switch kind {
+        case "music": "音乐"
+        case "video": "视频"
+        case "media": "媒体"
+        default: "应用"
+        }
+    }
+
+    private func symbol(for kind: String) -> String {
+        switch kind {
+        case "music": "music.note"
+        case "video": "play.rectangle"
+        case "media": "play.circle"
+        default: "macwindow"
+        }
     }
 }

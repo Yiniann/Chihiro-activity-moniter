@@ -191,12 +191,23 @@ struct ActivityEvent: Codable, Identifiable, Equatable {
     let timestamp: Date
     let kind: Kind
     let detail: String
+    let sequence: UInt64?
+    let slots: [PublicActivitySlot]?
 
-    init(id: UUID = UUID(), timestamp: Date = Date(), kind: Kind, detail: String) {
+    init(
+        id: UUID = UUID(),
+        timestamp: Date = Date(),
+        kind: Kind,
+        detail: String,
+        sequence: UInt64? = nil,
+        slots: [PublicActivitySlot]? = nil
+    ) {
         self.id = id
         self.timestamp = timestamp
         self.kind = kind
         self.detail = detail
+        self.sequence = sequence
+        self.slots = slots
     }
 }
 

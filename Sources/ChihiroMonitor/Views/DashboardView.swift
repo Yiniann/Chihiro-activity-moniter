@@ -179,7 +179,7 @@ struct ActivityHistoryView: View {
                     .adaptiveGlassButtonStyle()
             }
             List(monitor.events) { event in
-                EventRow(event: event)
+                EventRow(event: event, showsSnapshotDetails: true)
             }
             .listStyle(.inset)
             .clipShape(RoundedRectangle(cornerRadius: 8))
