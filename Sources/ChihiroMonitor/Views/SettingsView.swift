@@ -199,10 +199,10 @@ private struct EditApplicationSheet: View {
 private struct AddApplicationSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var monitor: ActivityMonitor
-    @State private var applications: [RunningApplicationOption] = []
+    @State private var applications: [InstalledApplicationOption] = []
     @State private var searchText = ""
 
-    private var filteredApplications: [RunningApplicationOption] {
+    private var filteredApplications: [InstalledApplicationOption] {
         guard !searchText.isEmpty else { return applications }
         return applications.filter {
             $0.name.localizedCaseInsensitiveContains(searchText)
@@ -214,7 +214,7 @@ private struct AddApplicationSheet: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("正在运行的应用")
+                    Text("已安装的应用")
                         .font(.title2.weight(.semibold))
                     Text("选择允许公开的应用")
                         .font(.subheadline)
@@ -288,40 +288,60 @@ private struct AddApplicationSheet: View {
         .padding(24)
         .frame(width: 540, height: 520)
         .onAppear(perform: refreshApplications)
-        .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didLaunchApplicationNotification)) { _ in
-            refreshApplications()
-        }
-        .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didTerminateApplicationNotification)) { _ in
-            refreshApplications()
-        }
     }
 
-    private func isAllowlisted(_ application: RunningApplicationOption) -> Bool {
+    private func isAllowlisted(_ application: InstalledApplicationOption) -> Bool {
         monitor.settings.allowlistedApplications.contains {
-            $0.bundleIdentifier == application.bundleIdentifier
+            $0.bundleIdentifier.caseInsensitiveCompare(application.bundleIdentifier) == .orderedSame
         }
     }
 
     private func refreshApplications() {
-        let ownPID = ProcessInfo.processInfo.processIdentifier
+        let fileManager = FileManager.default
+        let domains: [FileManager.SearchPathDomainMask] = [
+            .userDomainMask,
+            .localDomainMask,
+            .systemDomainMask
+        ]
         var seenBundleIdentifiers = Set<String>()
+        var installedApplications: [InstalledApplicationOption] = []
 
-        applications = NSWorkspace.shared.runningApplications.compactMap { application in
-            guard !application.isTerminated,
-                  application.processIdentifier != ownPID,
-                  application.activationPolicy != .prohibited,
-                  let bundleIdentifier = application.bundleIdentifier,
-                  let name = application.localizedName,
-                  seenBundleIdentifiers.insert(bundleIdentifier).inserted else {
-                return nil
+        for domain in domains {
+            guard let directory = fileManager.urls(for: .applicationDirectory, in: domain).first,
+                  let enumerator = fileManager.enumerator(
+                      at: directory,
+                      includingPropertiesForKeys: nil,
+                      options: [.skipsHiddenFiles, .skipsPackageDescendants]
+                  ) else { continue }
+
+            while let applicationURL = enumerator.nextObject() as? URL {
+                guard applicationURL.pathExtension.caseInsensitiveCompare("app") == .orderedSame else {
+                    continue
+                }
+                enumerator.skipDescendants()
+
+                guard let bundle = Bundle(url: applicationURL),
+                      let bundleIdentifier = bundle.bundleIdentifier,
+                      seenBundleIdentifiers.insert(bundleIdentifier.lowercased()).inserted else {
+                    continue
+                }
+
+                let name = (bundle.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String)
+                    ?? (bundle.object(forInfoDictionaryKey: "CFBundleName") as? String)
+                    ?? applicationURL.deletingPathExtension().lastPathComponent
+                installedApplications.append(
+                    InstalledApplicationOption(
+                        bundleIdentifier: bundleIdentifier,
+                        name: name,
+                        icon: NSWorkspace.shared.icon(forFile: applicationURL.path)
+                    )
+                )
             }
-            return RunningApplicationOption(
-                bundleIdentifier: bundleIdentifier,
-                name: name,
-                icon: application.icon
-            )
         }
-        .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+
+        applications = installedApplications.sorted {
+            $0.name.localizedStandardCompare($1.name) == .orderedAscending
+        }
     }
 
     @ViewBuilder
@@ -339,7 +359,7 @@ private struct AddApplicationSheet: View {
     }
 }
 
-private struct RunningApplicationOption: Identifiable {
+private struct InstalledApplicationOption: Identifiable {
     var id: String { bundleIdentifier }
     let bundleIdentifier: String
     let name: String
