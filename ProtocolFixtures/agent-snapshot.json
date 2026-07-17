@@ -1,0 +1,23 @@
+{
+  "protocol": "activity.v1",
+  "type": "agent:snapshot",
+  "sequence": 42,
+  "slots": [
+    {
+      "id": "foreground",
+      "kind": "application",
+      "appId": "com.microsoft.VSCode",
+      "title": "Visual Studio Code",
+      "subtitle": null,
+      "source": null
+    },
+    {
+      "id": "media",
+      "kind": "music",
+      "appId": "com.apple.Music",
+      "title": "Song",
+      "subtitle": "Artist",
+      "source": "Music"
+    }
+  ]
+}

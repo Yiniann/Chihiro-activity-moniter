@@ -1,0 +1,24 @@
+{
+  "configurations": [
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:Chihiro-activity-monitor}",
+      "name": "Debug ChihiroMonitor",
+      "target": "ChihiroMonitor",
+      "configuration": "debug",
+      "preLaunchTask": "swift: Build Debug ChihiroMonitor"
+    },
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:Chihiro-activity-monitor}",
+      "name": "Release ChihiroMonitor",
+      "target": "ChihiroMonitor",
+      "configuration": "release",
+      "preLaunchTask": "swift: Build Release ChihiroMonitor"
+    }
+  ]
+}
