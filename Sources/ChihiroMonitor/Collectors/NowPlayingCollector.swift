@@ -35,6 +35,19 @@ final class NowPlayingCollector: @unchecked Sendable {
         let sourceApplication = readSourceApplication(
             pid: (information["ChihiroApplicationPID"] as? NSNumber)?.int32Value
         )
+        let now = Date()
+        let durationSeconds = Self.normalizedDuration(
+            (information["kMRMediaRemoteNowPlayingInfoDuration"] as? NSNumber)?.doubleValue
+        )
+        let normalizedPlaybackRate = Self.normalizedPlaybackRate(playbackRate) ?? 1
+        let positionSeconds = Self.currentPlaybackPosition(
+            elapsedSeconds: (information["kMRMediaRemoteNowPlayingInfoElapsedTime"] as? NSNumber)?.doubleValue,
+            durationSeconds: durationSeconds,
+            playbackRate: normalizedPlaybackRate,
+            timestamp: information["kMRMediaRemoteNowPlayingInfoTimestamp"] as? Date,
+            now: now
+        )
+        let artwork = readArtwork(information)
         return NowPlayingActivity(
             kind: Self.classifyMediaKind(
                 mediaType: information["kMRMediaRemoteNowPlayingInfoMediaType"],
@@ -43,7 +56,24 @@ final class NowPlayingCollector: @unchecked Sendable {
             title: title,
             creator: creator?.isEmpty == true ? nil : creator,
             source: sourceApplication?.name,
-            sourceAppId: sourceApplication?.bundleIdentifier
+            sourceAppId: sourceApplication?.bundleIdentifier,
+            positionSeconds: positionSeconds,
+            durationSeconds: durationSeconds,
+            playbackRate: normalizedPlaybackRate,
+            positionUpdatedAt: positionSeconds == nil ? nil : now,
+            artwork: artwork
+        )
+    }
+
+    private func readArtwork(_ information: [String: Any]) -> NowPlayingArtwork? {
+        guard let data = information["kMRMediaRemoteNowPlayingInfoArtworkData"] as? Data,
+              !data.isEmpty,
+              data.count <= 10 * 1024 * 1024 else { return nil }
+        let identifier = (information["kMRMediaRemoteNowPlayingInfoArtworkIdentifier"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return NowPlayingArtwork(
+            data: data,
+            identifier: identifier?.isEmpty == false ? identifier : nil
         )
     }
 
@@ -57,7 +87,15 @@ final class NowPlayingCollector: @unchecked Sendable {
             if player state is not playing then return {}
             set trackTitle to name of current track
             set trackArtist to artist of current track
-            return {trackTitle, trackArtist}
+            set trackPosition to -1
+            set trackDuration to -1
+            try
+                set trackPosition to player position
+            end try
+            try
+                set trackDuration to duration of current track
+            end try
+            return {trackTitle, trackArtist, trackPosition, trackDuration}
         end tell
         """
         guard let script = NSAppleScript(source: source) else { return nil }
@@ -67,14 +105,48 @@ final class NowPlayingCollector: @unchecked Sendable {
               let title = result.atIndex(1)?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
               !title.isEmpty else { return nil }
         let artist = result.atIndex(2)?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let positionSeconds = Self.normalizedPosition(result.atIndex(3)?.doubleValue)
+        let durationSeconds = Self.normalizedDuration(result.atIndex(4)?.doubleValue)
 
         return NowPlayingActivity(
             kind: .music,
             title: title,
             creator: artist?.isEmpty == false ? artist : nil,
             source: "Music",
-            sourceAppId: "com.apple.Music"
+            sourceAppId: "com.apple.Music",
+            positionSeconds: positionSeconds.map { min($0, durationSeconds ?? $0) },
+            durationSeconds: durationSeconds,
+            playbackRate: 1,
+            positionUpdatedAt: positionSeconds == nil ? nil : Date()
         )
+    }
+
+    nonisolated static func currentPlaybackPosition(
+        elapsedSeconds: Double?,
+        durationSeconds: Double?,
+        playbackRate: Double,
+        timestamp: Date?,
+        now: Date
+    ) -> Double? {
+        guard let elapsedSeconds = normalizedPosition(elapsedSeconds) else { return nil }
+        let elapsedSinceSnapshot = timestamp.map { max(0, now.timeIntervalSince($0)) } ?? 0
+        let position = elapsedSeconds + elapsedSinceSnapshot * max(0, playbackRate)
+        return min(position, durationSeconds ?? position)
+    }
+
+    private nonisolated static func normalizedPosition(_ value: Double?) -> Double? {
+        guard let value, value.isFinite, value >= 0 else { return nil }
+        return value
+    }
+
+    private nonisolated static func normalizedDuration(_ value: Double?) -> Double? {
+        guard let value, value.isFinite, value > 0 else { return nil }
+        return value
+    }
+
+    private nonisolated static func normalizedPlaybackRate(_ value: Double?) -> Double? {
+        guard let value, value.isFinite, value > 0, value <= 16 else { return nil }
+        return value
     }
 
     nonisolated static func classifyMediaKind(

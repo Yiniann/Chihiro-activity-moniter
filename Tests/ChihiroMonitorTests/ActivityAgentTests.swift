@@ -95,12 +95,15 @@ struct ActivityAgentTests {
         #expect((object["slots"] as? [[String: Any]])?.count == 1)
     }
 
-    @Test func advertisesAndDecodesApplicationIconSync() throws {
+    @Test func advertisesAndDecodesActivityAssetSync() throws {
         #expect(AgentHello.current.capabilities.contains("application-icons"))
-        let data = Data(#"{"type":"server:ready","heartbeatInterval":30,"stateTtl":90,"iconSyncEndpoint":"https://blog.example.com/api/activity/icons"}"#.utf8)
+        #expect(AgentHello.current.capabilities.contains("now-playing-progress"))
+        #expect(AgentHello.current.capabilities.contains("now-playing-artwork"))
+        let data = Data(#"{"type":"server:ready","heartbeatInterval":30,"stateTtl":90,"iconSyncEndpoint":"https://blog.example.com/api/activity/icons","artworkSyncEndpoint":"https://blog.example.com/api/activity/artwork"}"#.utf8)
         let message = try JSONDecoder().decode(ServerMessage.self, from: data)
 
         #expect(message.iconSyncEndpoint == "https://blog.example.com/api/activity/icons")
+        #expect(message.artworkSyncEndpoint == "https://blog.example.com/api/activity/artwork")
     }
 
     @Test func mediaPolicyCanSuppressArtist() {
@@ -164,6 +167,81 @@ struct ActivityAgentTests {
         #expect(NowPlayingCollector.classifyMediaKind(mediaType: nil, isMusicApp: true) == .music)
         #expect(NowPlayingCollector.classifyMediaKind(mediaType: nil, isMusicApp: false) == .media)
         #expect(NowPlayingCollector.classifyMediaKind(mediaType: NSNumber(value: 99), isMusicApp: nil) == .media)
+    }
+
+    @Test func derivesAndPublishesNowPlayingProgressConservatively() {
+        let observedAt = Date(timeIntervalSince1970: 1_000)
+        let position = NowPlayingCollector.currentPlaybackPosition(
+            elapsedSeconds: 40,
+            durationSeconds: 120,
+            playbackRate: 1,
+            timestamp: observedAt.addingTimeInterval(-3),
+            now: observedAt
+        )
+        #expect(position == 43)
+
+        let previous = NowPlayingActivity(
+            kind: .music,
+            title: "Song",
+            creator: "Artist",
+            source: "Music",
+            sourceAppId: "com.apple.Music",
+            positionSeconds: 40,
+            durationSeconds: 120,
+            playbackRate: 1,
+            positionUpdatedAt: observedAt
+        )
+        let normalProgress = NowPlayingActivity(
+            kind: .music,
+            title: "Song",
+            creator: "Artist",
+            source: "Music",
+            sourceAppId: "com.apple.Music",
+            positionSeconds: 48,
+            durationSeconds: 120,
+            playbackRate: 1,
+            positionUpdatedAt: observedAt.addingTimeInterval(8)
+        )
+        let seekedProgress = NowPlayingActivity(
+            kind: .music,
+            title: "Song",
+            creator: "Artist",
+            source: "Music",
+            sourceAppId: "com.apple.Music",
+            positionSeconds: 80,
+            durationSeconds: 120,
+            playbackRate: 1,
+            positionUpdatedAt: observedAt.addingTimeInterval(8)
+        )
+
+        #expect(!NowPlayingActivity.requiresPublication(from: previous, to: normalProgress))
+        #expect(NowPlayingActivity.requiresPublication(from: previous, to: seekedProgress))
+    }
+
+    @Test func publishesOnlyConfirmedArtworkAndPreservesItsHash() {
+        var settings = MonitorSettings.defaults
+        settings.mediaEnabled = true
+        let artwork = NowPlayingArtwork(data: Data([1, 2, 3]), identifier: "cover-1")
+        let previous = NowPlayingActivity(
+            kind: .music,
+            title: "Song",
+            creator: "Artist",
+            source: "Music",
+            sourceAppId: "com.apple.Music",
+            artwork: artwork,
+            artworkHash: String(repeating: "a", count: 64)
+        )
+        let refreshed = NowPlayingActivity(
+            kind: .music,
+            title: "Song",
+            creator: "Artist",
+            source: "Music",
+            sourceAppId: "com.apple.Music",
+            artwork: artwork
+        ).preservingConfirmedArtwork(from: previous)
+
+        #expect(refreshed.artworkHash == previous.artworkHash)
+        #expect(PublishPolicy(settings: settings).mediaSlot(for: refreshed)?.artworkHash == previous.artworkHash)
     }
 
     @Test func normalizesBlogAndWebSocketURLs() {

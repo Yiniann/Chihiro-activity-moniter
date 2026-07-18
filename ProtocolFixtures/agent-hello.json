@@ -5,6 +5,8 @@
   "capabilities": [
     "foreground-application",
     "now-playing",
-    "application-icons"
+    "now-playing-progress",
+    "application-icons",
+    "now-playing-artwork"
   ]
 }

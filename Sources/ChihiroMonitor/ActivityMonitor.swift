@@ -19,6 +19,7 @@ final class ActivityMonitor: ObservableObject {
             applyLaunchAtLogin()
             rebuildPublicSlots(sendIfChanged: true)
             scheduleIconSync()
+            scheduleArtworkSync()
         }
     }
 
@@ -28,6 +29,7 @@ final class ActivityMonitor: ObservableObject {
     private let mediaCollector = NowPlayingCollector()
     private let realtime = RealtimeClient()
     private let iconSync = ApplicationIconSyncClient()
+    private let artworkSync = NowPlayingArtworkSyncClient()
     private var currentMedia: NowPlayingActivity?
     private var timer: Timer?
     private var workspaceObservers: [NSObjectProtocol] = []
@@ -39,6 +41,9 @@ final class ActivityMonitor: ObservableObject {
     private var lastDisconnectedEventAt = Date.distantPast
     private var iconSyncEndpoint: URL?
     private var iconSyncTask: Task<Void, Never>?
+    private var artworkSyncEndpoint: URL?
+    private var artworkSyncTask: Task<Void, Never>?
+    private var lastArtworkSyncAttempt: NowPlayingArtwork?
 
     init(store: ActivityStore = ActivityStore()) {
         self.store = store
@@ -142,6 +147,10 @@ final class ActivityMonitor: ObservableObject {
                 self.iconSyncTask?.cancel()
                 self.iconSyncTask = nil
                 self.iconSyncEndpoint = nil
+                self.artworkSyncTask?.cancel()
+                self.artworkSyncTask = nil
+                self.artworkSyncEndpoint = nil
+                self.lastArtworkSyncAttempt = nil
             }
             if state == .disconnected, previous != .disconnected,
                Date().timeIntervalSince(self.lastDisconnectedEventAt) > 10 {
@@ -149,13 +158,15 @@ final class ActivityMonitor: ObservableObject {
                 self.record(.disconnected, detail: "等待自动重连")
             }
         }
-        realtime.onReady = { [weak self] heartbeat, _, iconSyncEndpoint in
+        realtime.onReady = { [weak self] heartbeat, _, iconSyncEndpoint, artworkSyncEndpoint in
             guard let self else { return }
             self.heartbeatInterval = max(10, heartbeat)
             self.iconSyncEndpoint = iconSyncEndpoint.flatMap(URL.init(string:))
+            self.artworkSyncEndpoint = artworkSyncEndpoint.flatMap(URL.init(string:))
             self.record(.connected, detail: "activity.v1 握手完成")
             self.sendSnapshot()
             self.scheduleIconSync()
+            self.scheduleArtworkSync()
         }
         realtime.onError = { [weak self] message in
             self?.lastError = message
@@ -217,15 +228,24 @@ final class ActivityMonitor: ObservableObject {
         lastMediaPollAt = Date()
 
         Task { [weak self, mediaCollector] in
-            let nextMedia = await mediaCollector.collect()
+            var nextMedia = await mediaCollector.collect()
             guard let self else { return }
             self.isMediaPollInFlight = false
             guard self.settings.mediaEnabled, !self.isPaused else { return }
-            if nextMedia != self.currentMedia {
-                self.currentMedia = nextMedia
+            let previousMedia = self.currentMedia
+            nextMedia = nextMedia?.preservingConfirmedArtwork(from: previousMedia)
+            let shouldPublish = NowPlayingActivity.requiresPublication(
+                from: previousMedia,
+                to: nextMedia
+            )
+            self.currentMedia = nextMedia
+            if shouldPublish {
                 self.rebuildPublicSlots(sendIfChanged: true)
+            }
+            if previousMedia?.sourceAppId != nextMedia?.sourceAppId {
                 self.scheduleIconSync()
             }
+            self.scheduleArtworkSync()
         }
     }
 
@@ -330,6 +350,43 @@ final class ActivityMonitor: ObservableObject {
         return candidates
     }
 
+    private func scheduleArtworkSync() {
+        guard connectionState == .connected,
+              let endpoint = artworkSyncEndpoint,
+              let media = currentMedia,
+              media.artworkHash == nil,
+              let artwork = media.artwork,
+              artwork != lastArtworkSyncAttempt else { return }
+
+        artworkSyncTask?.cancel()
+        lastArtworkSyncAttempt = artwork
+        artworkSyncTask = Task { [weak self, artworkSync] in
+            do {
+                let result = try await artworkSync.sync(
+                    artwork: artwork,
+                    endpoint: endpoint,
+                    token: self?.token ?? ""
+                )
+                guard let self, !Task.isCancelled, self.currentMedia?.artwork == artwork else { return }
+                if let artworkHash = result.artworkHash {
+                    self.currentMedia?.artworkHash = artworkHash
+                    self.rebuildPublicSlots(sendIfChanged: true)
+                }
+                if result.uploaded {
+                    self.record(.artworkSynced, detail: "已上传当前播放内容的封面")
+                }
+                self.artworkSyncTask = nil
+            } catch is CancellationError {
+                return
+            } catch {
+                guard let self, !Task.isCancelled else { return }
+                self.lastArtworkSyncAttempt = nil
+                self.lastError = "播放封面同步失败：\(error.localizedDescription)"
+                self.artworkSyncTask = nil
+            }
+        }
+    }
+
     private func prepareForInactivity() {
         let previous = publicSlots
         publicSlots = []
@@ -351,9 +408,21 @@ final class ActivityMonitor: ObservableObject {
             case "media": "媒体"
             default: "应用"
             }
-            return "\(label)：\(slot.title)"
+            let progress = formatMediaProgress(slot)
+            return "\(label)：\(slot.title)\(progress.map { " · \($0)" } ?? "")"
         }
         return "快照 #\(snapshot.sequence) · " + values.joined(separator: "；")
+    }
+
+    private func formatMediaProgress(_ slot: PublicActivitySlot) -> String? {
+        guard let position = slot.positionSeconds else { return nil }
+        let positionText = formatMediaTime(position)
+        return slot.durationSeconds.map { "\(positionText) / \(formatMediaTime($0))" } ?? positionText
+    }
+
+    private func formatMediaTime(_ seconds: Double) -> String {
+        let value = max(0, Int(seconds.rounded(.down)))
+        return String(format: "%d:%02d", value / 60, value % 60)
     }
 
     private func record(

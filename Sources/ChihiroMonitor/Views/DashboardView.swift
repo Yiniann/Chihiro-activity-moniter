@@ -4,16 +4,23 @@ enum DashboardSection: String, CaseIterable, Identifiable {
     case overview = "概览"
     case allowlist = "应用白名单"
     case activity = "上报记录"
-    case settings = "连接设置"
+    case connection = "WebSocket"
+    case nowPlaying = "Now Playing"
+    case general = "通用"
 
     var id: String { rawValue }
+
+    static let monitoring: [DashboardSection] = [.overview, .allowlist, .activity]
+    static let settings: [DashboardSection] = [.connection, .nowPlaying, .general]
 
     var symbol: String {
         switch self {
         case .overview: "rectangle.3.group"
         case .allowlist: "checkmark.shield"
         case .activity: "arrow.up.arrow.down"
-        case .settings: "slider.horizontal.3"
+        case .connection: "network"
+        case .nowPlaying: "play.square.stack"
+        case .general: "gearshape"
         }
     }
 }
@@ -24,45 +31,55 @@ struct DashboardShellView: View {
 
     var body: some View {
         NavigationSplitView {
-            List(selection: $selection) {
-                Section {
-                    ForEach(DashboardSection.allCases) { section in
-                        Label(section.rawValue, systemImage: section.symbol)
-                            .tag(section)
-                    }
-                }
-            }
-            .navigationTitle("Chihiro Activity")
-            .navigationSplitViewColumnWidth(min: 180, ideal: 210, max: 240)
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                VStack(spacing: 0) {
-                    Divider()
-                    Button {
-                        selection = .settings
-                    } label: {
-                        HStack(spacing: 9) {
-                            StatusDot(state: monitor.connectionState)
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(monitor.isPaused ? "已暂停" : monitor.connectionState.title)
-                                    .font(.caption.weight(.medium))
-                                Text("Agent · activity.v1")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.tertiary)
+            VStack(spacing: 0) {
+                DashboardIdentityHeader()
+                Divider()
+                List(selection: $selection) {
+                    Section("监测") {
+                        ForEach(DashboardSection.monitoring) { section in
+                            Label(section.rawValue, systemImage: section.symbol)
+                                .tag(section)
                         }
-                        .contentShape(Rectangle())
-                        .padding(.horizontal, 12)
-                        .frame(height: 50)
                     }
-                    .buttonStyle(.plain)
-                    .help("打开连接设置")
+                    Section("设置") {
+                        ForEach(DashboardSection.settings) { section in
+                            Label(section.rawValue, systemImage: section.symbol)
+                                .tag(section)
+                        }
+                    }
                 }
-                .background(.bar)
+                .listStyle(.sidebar)
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    VStack(spacing: 0) {
+                        Divider()
+                        Button {
+                            selection = .connection
+                        } label: {
+                            HStack(spacing: 9) {
+                                StatusDot(state: monitor.connectionState)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(monitor.isPaused ? "已暂停" : monitor.connectionState.title)
+                                        .font(.caption.weight(.medium))
+                                    Text("Agent · activity.v1")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.tertiary)
+                            }
+                            .contentShape(Rectangle())
+                            .padding(.horizontal, 12)
+                            .frame(height: 50)
+                        }
+                        .buttonStyle(.plain)
+                        .help("打开 WebSocket 设置")
+                    }
+                    .background(.bar)
+                }
             }
+            .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 250)
         } detail: {
             detail
                 .environmentObject(monitor)
@@ -94,8 +111,31 @@ struct DashboardShellView: View {
         case .overview: OverviewView()
         case .allowlist: AllowlistView()
         case .activity: ActivityHistoryView()
-        case .settings: SettingsView()
+        case .connection: ConnectionSettingsView()
+        case .nowPlaying: NowPlayingSettingsView()
+        case .general: GeneralSettingsView()
         }
+    }
+}
+
+private struct DashboardIdentityHeader: View {
+    var body: some View {
+        HStack(spacing: 11) {
+            ActivityMark()
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Chihiro Monitor")
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+                Text("Mac Activity Agent")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 64)
+        .background(.bar)
+        .accessibilityElement(children: .combine)
     }
 }
 

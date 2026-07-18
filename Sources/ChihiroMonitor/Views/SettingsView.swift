@@ -2,44 +2,84 @@ import AppKit
 import SwiftUI
 
 struct SettingsView: View {
+    var body: some View {
+        TabView {
+            ConnectionSettingsView(showsHeader: false)
+                .tabItem { Label("连接", systemImage: "network") }
+            NowPlayingSettingsView(showsHeader: false)
+                .tabItem { Label("Now Playing", systemImage: "play.square.stack") }
+            GeneralSettingsView(showsHeader: false)
+                .tabItem { Label("通用", systemImage: "gearshape") }
+        }
+    }
+}
+
+struct ConnectionSettingsView: View {
     @EnvironmentObject private var monitor: ActivityMonitor
+    var showsHeader = true
 
     var body: some View {
-        Form {
-            Section("WebSocket") {
-                TextField(
-                    "WebSocket 地址",
-                    text: $monitor.settings.endpoint,
-                    prompt: Text("wss://example.com/realtime/activity/agent")
-                )
-                    .textFieldStyle(.roundedBorder)
-                HStack(spacing: 8) {
-                    SecureField(
-                        "Agent Token",
-                        text: $monitor.token,
-                        prompt: Text("从 Chihiro 后台复制")
+        SettingsPage(
+            title: "WebSocket",
+            subtitle: "Agent 与 Chihiro 博客的实时连接",
+            showsHeader: showsHeader
+        ) {
+            Form {
+                Section("连接") {
+                    TextField(
+                        "WebSocket 地址",
+                        text: $monitor.settings.endpoint,
+                        prompt: Text("wss://example.com/realtime/activity/agent")
                     )
+                    .textFieldStyle(.roundedBorder)
+                    HStack(spacing: 8) {
+                        SecureField(
+                            "Agent Token",
+                            text: $monitor.token,
+                            prompt: Text("从 Chihiro 后台复制")
+                        )
                         .textFieldStyle(.roundedBorder)
-                    Button {
-                        monitor.copyTokenToPasteboard()
-                    } label: {
-                        Image(systemName: "doc.on.doc")
+                        Button {
+                            monitor.copyTokenToPasteboard()
+                        } label: {
+                            Image(systemName: "doc.on.doc")
+                        }
+                        .adaptiveGlassButtonStyle()
+                        .disabled(monitor.token.isEmpty)
+                        .help("复制 Agent Token")
                     }
-                    .adaptiveGlassButtonStyle()
-                    .disabled(monitor.token.isEmpty)
-                    .help("复制 Agent Token")
-                }
-                HStack {
-                    Label(monitor.connectionState.title, systemImage: "circle.fill")
-                        .foregroundStyle(monitor.connectionState == .connected ? ChihiroPalette.green : .secondary)
-                    Spacer()
-                    Button("连接") { monitor.reconnect() }
-                        .adaptiveGlassButtonStyle(prominent: true)
-                        .tint(ChihiroPalette.blue)
+                    LabeledContent("状态") {
+                        HStack(spacing: 7) {
+                            StatusDot(state: monitor.connectionState)
+                            Text(monitor.connectionState.title)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    HStack {
+                        Spacer()
+                        Button("连接") { monitor.reconnect() }
+                            .adaptiveGlassButtonStyle(prominent: true)
+                            .tint(ChihiroPalette.blue)
+                    }
                 }
             }
+            .formStyle(.grouped)
+        }
+    }
+}
 
-            Section("Now Playing") {
+struct NowPlayingSettingsView: View {
+    @EnvironmentObject private var monitor: ActivityMonitor
+    var showsHeader = true
+
+    var body: some View {
+        SettingsPage(
+            title: "Now Playing",
+            subtitle: "选择可以发布到博客的系统播放信息",
+            showsHeader: showsHeader
+        ) {
+            Form {
+                Section("公开内容") {
                 Toggle("发布系统 Now Playing", isOn: $monitor.settings.mediaEnabled)
                 Toggle("发布媒体标题", isOn: $monitor.settings.publishTrackTitle)
                     .disabled(!monitor.settings.mediaEnabled)
@@ -47,14 +87,56 @@ struct SettingsView: View {
                     .disabled(!monitor.settings.mediaEnabled || !monitor.settings.publishTrackTitle)
                 Toggle("发布播放器来源", isOn: $monitor.settings.publishSourceApplication)
                     .disabled(!monitor.settings.mediaEnabled)
+                }
             }
-
-            Section("系统") {
-                Toggle("登录时启动", isOn: $monitor.settings.launchAtLogin)
-            }
+            .formStyle(.grouped)
         }
-        .formStyle(.grouped)
-        .padding(12)
+    }
+}
+
+struct GeneralSettingsView: View {
+    @EnvironmentObject private var monitor: ActivityMonitor
+    var showsHeader = true
+
+    var body: some View {
+        SettingsPage(
+            title: "通用",
+            subtitle: "启动与系统集成",
+            showsHeader: showsHeader
+        ) {
+            Form {
+                Section("启动") {
+                    Toggle("登录时启动", isOn: $monitor.settings.launchAtLogin)
+                }
+            }
+            .formStyle(.grouped)
+        }
+    }
+}
+
+private struct SettingsPage<Content: View>: View {
+    let title: String
+    let subtitle: String
+    let showsHeader: Bool
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: showsHeader ? 18 : 0) {
+            if showsHeader {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(title)
+                        .font(.title2.weight(.semibold))
+                    Text(subtitle)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            content
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .padding(showsHeader ? 28 : 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Color(nsColor: .windowBackgroundColor))
     }
 }
 

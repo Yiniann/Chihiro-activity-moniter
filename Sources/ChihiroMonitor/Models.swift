@@ -96,12 +96,97 @@ enum NowPlayingMediaKind: String, Codable, Equatable {
     case media
 }
 
+struct NowPlayingArtwork: Equatable {
+    let data: Data
+    let identifier: String?
+}
+
 struct NowPlayingActivity: Equatable {
     let kind: NowPlayingMediaKind
     let title: String
     let creator: String?
     let source: String?
     let sourceAppId: String?
+    let positionSeconds: Double?
+    let durationSeconds: Double?
+    let playbackRate: Double?
+    let positionUpdatedAt: Date?
+    let artwork: NowPlayingArtwork?
+    var artworkHash: String?
+
+    init(
+        kind: NowPlayingMediaKind,
+        title: String,
+        creator: String?,
+        source: String?,
+        sourceAppId: String?,
+        positionSeconds: Double? = nil,
+        durationSeconds: Double? = nil,
+        playbackRate: Double? = nil,
+        positionUpdatedAt: Date? = nil,
+        artwork: NowPlayingArtwork? = nil,
+        artworkHash: String? = nil
+    ) {
+        self.kind = kind
+        self.title = title
+        self.creator = creator
+        self.source = source
+        self.sourceAppId = sourceAppId
+        self.positionSeconds = positionSeconds
+        self.durationSeconds = durationSeconds
+        self.playbackRate = playbackRate
+        self.positionUpdatedAt = positionUpdatedAt
+        self.artwork = artwork
+        self.artworkHash = artworkHash
+    }
+
+    static func requiresPublication(
+        from previous: NowPlayingActivity?,
+        to next: NowPlayingActivity?
+    ) -> Bool {
+        guard let previous, let next else { return previous != next }
+        guard previous.kind == next.kind,
+              previous.title == next.title,
+              previous.creator == next.creator,
+              previous.source == next.source,
+              previous.sourceAppId == next.sourceAppId,
+              previous.artworkHash == next.artworkHash else { return true }
+        if differs(previous.durationSeconds, next.durationSeconds, tolerance: 0.5)
+            || differs(previous.playbackRate, next.playbackRate, tolerance: 0.01) {
+            return true
+        }
+
+        switch (previous.positionSeconds, next.positionSeconds) {
+        case (nil, nil):
+            return false
+        case let (previousPosition?, nextPosition?):
+            let elapsed = max(
+                0,
+                next.positionUpdatedAt?.timeIntervalSince(
+                    previous.positionUpdatedAt ?? next.positionUpdatedAt ?? .distantPast
+                ) ?? 0
+            )
+            let expectedPosition = previousPosition + elapsed * (previous.playbackRate ?? 0)
+            return abs(nextPosition - expectedPosition) >= 2
+        default:
+            return true
+        }
+    }
+
+    func preservingConfirmedArtwork(from previous: NowPlayingActivity?) -> NowPlayingActivity {
+        guard let previous, let artwork, previous.artwork == artwork else { return self }
+        var value = self
+        value.artworkHash = previous.artworkHash
+        return value
+    }
+
+    private static func differs(_ left: Double?, _ right: Double?, tolerance: Double) -> Bool {
+        switch (left, right) {
+        case (nil, nil): false
+        case let (left?, right?): abs(left - right) > tolerance
+        default: true
+        }
+    }
 }
 
 struct PublicActivitySlot: Codable, Identifiable, Equatable {
@@ -111,6 +196,37 @@ struct PublicActivitySlot: Codable, Identifiable, Equatable {
     let title: String
     let subtitle: String?
     let source: String?
+    let positionSeconds: Double?
+    let durationSeconds: Double?
+    let playbackRate: Double?
+    let positionUpdatedAt: Int64?
+    let artworkHash: String?
+
+    init(
+        id: String,
+        kind: String,
+        appId: String?,
+        title: String,
+        subtitle: String?,
+        source: String?,
+        positionSeconds: Double? = nil,
+        durationSeconds: Double? = nil,
+        playbackRate: Double? = nil,
+        positionUpdatedAt: Int64? = nil,
+        artworkHash: String? = nil
+    ) {
+        self.id = id
+        self.kind = kind
+        self.appId = appId
+        self.title = title
+        self.subtitle = subtitle
+        self.source = source
+        self.positionSeconds = positionSeconds
+        self.durationSeconds = durationSeconds
+        self.playbackRate = playbackRate
+        self.positionUpdatedAt = positionUpdatedAt
+        self.artworkHash = artworkHash
+    }
 }
 
 struct AgentHello: Codable, Equatable {
@@ -123,7 +239,13 @@ struct AgentHello: Codable, Equatable {
         protocol: "activity.v1",
         type: "agent:hello",
         agentVersion: "0.1.0",
-        capabilities: ["foreground-application", "now-playing", "application-icons"]
+        capabilities: [
+            "foreground-application",
+            "now-playing",
+            "now-playing-progress",
+            "application-icons",
+            "now-playing-artwork"
+        ]
     )
 }
 
@@ -152,6 +274,7 @@ struct ServerMessage: Decodable {
     let heartbeatInterval: Double?
     let stateTtl: Double?
     let iconSyncEndpoint: String?
+    let artworkSyncEndpoint: String?
     let code: String?
     let message: String?
 }
@@ -163,6 +286,7 @@ struct ActivityEvent: Codable, Identifiable, Equatable {
         case disconnected
         case snapshotSent
         case iconsSynced
+        case artworkSynced
         case paused
         case resumed
 
@@ -173,6 +297,7 @@ struct ActivityEvent: Codable, Identifiable, Equatable {
             case .disconnected: "连接已断开"
             case .snapshotSent: "公开状态已上报"
             case .iconsSynced: "应用图标已同步"
+            case .artworkSynced: "播放封面已同步"
             case .paused: "监测已暂停"
             case .resumed: "监测已恢复"
             }
@@ -185,6 +310,7 @@ struct ActivityEvent: Codable, Identifiable, Equatable {
             case .disconnected: "link.badge.plus"
             case .snapshotSent: "arrow.up.circle.fill"
             case .iconsSynced: "photo.badge.checkmark"
+            case .artworkSynced: "photo.on.rectangle.angled"
             case .paused: "pause.fill"
             case .resumed: "play.fill"
             }

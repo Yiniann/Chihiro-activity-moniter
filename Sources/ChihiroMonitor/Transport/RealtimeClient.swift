@@ -3,7 +3,7 @@ import Foundation
 @MainActor
 final class RealtimeClient {
     var onStateChange: ((ConnectionState) -> Void)?
-    var onReady: ((Double, Double, String?) -> Void)?
+    var onReady: ((Double, Double, String?, String?) -> Void)?
     var onError: ((String) -> Void)?
 
     private var socket: URLSessionWebSocketTask?
@@ -111,7 +111,8 @@ final class RealtimeClient {
                 onReady?(
                     serverMessage.heartbeatInterval ?? 30,
                     serverMessage.stateTtl ?? 90,
-                    serverMessage.iconSyncEndpoint
+                    serverMessage.iconSyncEndpoint,
+                    serverMessage.artworkSyncEndpoint
                 )
             case "server:error":
                 let reason = serverMessage.message ?? serverMessage.code ?? "服务端拒绝了请求"

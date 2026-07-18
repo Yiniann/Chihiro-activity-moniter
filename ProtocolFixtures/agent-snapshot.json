@@ -9,7 +9,12 @@
       "appId": "com.microsoft.VSCode",
       "title": "Visual Studio Code",
       "subtitle": null,
-      "source": null
+      "source": null,
+      "positionSeconds": null,
+      "durationSeconds": null,
+      "playbackRate": null,
+      "positionUpdatedAt": null,
+      "artworkHash": null
     },
     {
       "id": "media",
@@ -17,7 +22,12 @@
       "appId": "com.apple.Music",
       "title": "Song",
       "subtitle": "Artist",
-      "source": "Music"
+      "source": "Music",
+      "positionSeconds": 83.4,
+      "durationSeconds": 241.8,
+      "playbackRate": 1,
+      "positionUpdatedAt": 1784358000000,
+      "artworkHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     }
   ]
 }

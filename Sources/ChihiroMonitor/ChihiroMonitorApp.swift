@@ -31,7 +31,7 @@ struct ChihiroMonitorApp: App {
         Settings {
             SettingsView()
                 .environmentObject(monitor)
-                .frame(width: 520, height: 410)
+                .frame(width: 560, height: 440)
         }
     }
 }

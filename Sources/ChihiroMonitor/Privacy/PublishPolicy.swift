@@ -27,7 +27,14 @@ struct PublishPolicy {
             appId: settings.publishSourceApplication ? media.sourceAppId.flatMap(sanitizeBundleIdentifier) : nil,
             title: sanitize(media.title, maximumLength: 100),
             subtitle: settings.publishArtist ? media.creator.map { sanitize($0, maximumLength: 100) } : nil,
-            source: settings.publishSourceApplication ? media.source.map { sanitize($0, maximumLength: 50) } : nil
+            source: settings.publishSourceApplication ? media.source.map { sanitize($0, maximumLength: 50) } : nil,
+            positionSeconds: media.positionSeconds,
+            durationSeconds: media.durationSeconds,
+            playbackRate: media.playbackRate,
+            positionUpdatedAt: media.positionUpdatedAt.map {
+                Int64($0.timeIntervalSince1970 * 1_000)
+            },
+            artworkHash: media.artworkHash
         )
     }
 

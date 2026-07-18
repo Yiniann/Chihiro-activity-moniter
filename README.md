@@ -10,6 +10,7 @@
 - 系统 Now Playing 采集默认关闭，可分别控制是否发布媒体标题和创作者
 - 可选发布播放器应用名称和 Bundle ID，不上传 PID
 - 只为白名单应用和已公开的播放器来源同步应用图标；博客未配置对象存储时自动跳过
+- 播放封面来自系统 Now Playing；Agent 先缩放压缩，博客确认对象存储后才公开封面哈希
 - Agent Token 存在 macOS Keychain，不写入配置文件
 
 ## Activity v1
@@ -38,7 +39,7 @@ Agent 在连接时将 Token 保存到 macOS Keychain。只有两端 Token 一致
   "protocol": "activity.v1",
   "type": "agent:hello",
   "agentVersion": "0.1.0",
-  "capabilities": ["foreground-application", "now-playing", "application-icons"]
+  "capabilities": ["foreground-application", "now-playing", "now-playing-progress", "application-icons", "now-playing-artwork"]
 }
 ```
 
@@ -51,20 +52,27 @@ Agent 在连接时将 Token 保存到 macOS Keychain。只有两端 Token 一致
   "sequence": 42,
   "slots": [
     {
-      "id": "foreground",
-      "kind": "application",
-      "appId": "com.microsoft.VSCode",
-      "title": "Visual Studio Code",
-      "subtitle": null,
-      "source": null
+      "id": "media",
+      "kind": "music",
+      "appId": "com.apple.Music",
+      "title": "Song",
+      "subtitle": "Artist",
+      "source": "Music",
+      "positionSeconds": 83.4,
+      "durationSeconds": 241.8,
+      "playbackRate": 1,
+      "positionUpdatedAt": 1784358000000,
+      "artworkHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     }
   ]
 }
 ```
 
-没有可公开状态时发送 `"slots": []`。每 30 秒发送 `agent:heartbeat`，连接失败时使用指数退避自动重连。
+没有可公开状态时发送 `"slots": []`。媒体进度使用基准秒数、总时长、播放速度和更新时间表示，博客可在两次状态变化之间自行递增；Agent 不会每秒发送进度。每 30 秒发送 `agent:heartbeat`，连接失败时使用指数退避自动重连。
 
 `appId` 使用 macOS Bundle Identifier，例如 `com.microsoft.VSCode`。应用名称 `title` 只用于展示。连接成功后，Agent 会比较允许公开应用的图标哈希，并只向博客提供的鉴权接口上传缺失或变化的 PNG；博客将图片保存到已配置的 S3/R2 对象存储。日常活动快照仍只发送 `appId`，未知图标按 `kind` 回退到通用图标。
+
+Now Playing 提供封面时，Agent 将其裁切并压缩为最大 512KB 的 JPEG 上传体，再按 SHA-256 检查是否需要上传。博客统一转为 WebP，保存到 `activity-artwork/{hash}.webp`，并从对象存储公开地址派生 `artworkUrl`；不创建封面数据库表。Agent 对服务端确认结果缓存 24 小时。Cloudflare R2 应为实际的 `activity-artwork/` 前缀（若配置了全局前缀则需包含它）设置 180 天生命周期删除规则，应用图标前缀不应被该规则匹配。
 
 ## 运行
 
