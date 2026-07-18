@@ -9,6 +9,7 @@
 - 不读取窗口标题、文件名、网页 URL、输入内容或屏幕画面
 - 系统 Now Playing 采集默认关闭，可分别控制是否发布媒体标题和创作者
 - 可选发布播放器应用名称和 Bundle ID，不上传 PID
+- 只为白名单应用和已公开的播放器来源同步应用图标；博客未配置对象存储时自动跳过
 - Agent Token 存在 macOS Keychain，不写入配置文件
 
 ## Activity v1
@@ -37,7 +38,7 @@ Agent 在连接时将 Token 保存到 macOS Keychain。只有两端 Token 一致
   "protocol": "activity.v1",
   "type": "agent:hello",
   "agentVersion": "0.1.0",
-  "capabilities": ["foreground-application", "now-playing"]
+  "capabilities": ["foreground-application", "now-playing", "application-icons"]
 }
 ```
 
@@ -63,7 +64,7 @@ Agent 在连接时将 Token 保存到 macOS Keychain。只有两端 Token 一致
 
 没有可公开状态时发送 `"slots": []`。每 30 秒发送 `agent:heartbeat`，连接失败时使用指数退避自动重连。
 
-`appId` 使用 macOS Bundle Identifier，例如 `com.microsoft.VSCode`。应用名称 `title` 只用于展示；Agent 不上传本机应用图标，博客通过 `appId` 匹配自己的静态图标，未知 `appId` 按 `kind` 回退到通用图标。
+`appId` 使用 macOS Bundle Identifier，例如 `com.microsoft.VSCode`。应用名称 `title` 只用于展示。连接成功后，Agent 会比较允许公开应用的图标哈希，并只向博客提供的鉴权接口上传缺失或变化的 PNG；博客将图片保存到已配置的 S3/R2 对象存储。日常活动快照仍只发送 `appId`，未知图标按 `kind` 回退到通用图标。
 
 ## 运行
 

@@ -4,6 +4,7 @@
   "agentVersion": "0.1.0",
   "capabilities": [
     "foreground-application",
-    "now-playing"
+    "now-playing",
+    "application-icons"
   ]
 }

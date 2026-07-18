@@ -91,7 +91,7 @@ struct AllowlistView: View {
                 List {
                     ForEach(monitor.settings.allowlistedApplications) { application in
                         HStack(spacing: 12) {
-                            Image(systemName: "app").foregroundStyle(ChihiroPalette.blue).frame(width: 28, height: 28)
+                            applicationIcon(for: application)
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(application.title).font(.body.weight(.medium))
                                 Text(application.bundleIdentifier).font(.caption.monospaced()).foregroundStyle(.secondary)
@@ -149,6 +149,24 @@ struct AllowlistView: View {
             Button("取消", role: .cancel) {
                 deletionCandidate = nil
             }
+        }
+    }
+
+    @ViewBuilder
+    private func applicationIcon(for application: AllowedApplication) -> some View {
+        if let applicationURL = NSWorkspace.shared.urlForApplication(
+            withBundleIdentifier: application.bundleIdentifier
+        ) {
+            Image(nsImage: NSWorkspace.shared.icon(forFile: applicationURL.path))
+                .resizable()
+                .scaledToFit()
+                .frame(width: 32, height: 32)
+                .accessibilityHidden(true)
+        } else {
+            Image(systemName: "macwindow")
+                .foregroundStyle(ChihiroPalette.blue)
+                .frame(width: 32, height: 32)
+                .accessibilityHidden(true)
         }
     }
 }

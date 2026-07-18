@@ -123,7 +123,7 @@ struct AgentHello: Codable, Equatable {
         protocol: "activity.v1",
         type: "agent:hello",
         agentVersion: "0.1.0",
-        capabilities: ["foreground-application", "now-playing"]
+        capabilities: ["foreground-application", "now-playing", "application-icons"]
     )
 }
 
@@ -151,6 +151,7 @@ struct ServerMessage: Decodable {
     let type: String
     let heartbeatInterval: Double?
     let stateTtl: Double?
+    let iconSyncEndpoint: String?
     let code: String?
     let message: String?
 }
@@ -161,6 +162,7 @@ struct ActivityEvent: Codable, Identifiable, Equatable {
         case connected
         case disconnected
         case snapshotSent
+        case iconsSynced
         case paused
         case resumed
 
@@ -170,6 +172,7 @@ struct ActivityEvent: Codable, Identifiable, Equatable {
             case .connected: "WebSocket 已连接"
             case .disconnected: "连接已断开"
             case .snapshotSent: "公开状态已上报"
+            case .iconsSynced: "应用图标已同步"
             case .paused: "监测已暂停"
             case .resumed: "监测已恢复"
             }
@@ -181,6 +184,7 @@ struct ActivityEvent: Codable, Identifiable, Equatable {
             case .connected: "link"
             case .disconnected: "link.badge.plus"
             case .snapshotSent: "arrow.up.circle.fill"
+            case .iconsSynced: "photo.badge.checkmark"
             case .paused: "pause.fill"
             case .resumed: "play.fill"
             }

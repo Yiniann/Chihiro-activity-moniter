@@ -18,6 +18,7 @@ final class ActivityMonitor: ObservableObject {
             saveSettings()
             applyLaunchAtLogin()
             rebuildPublicSlots(sendIfChanged: true)
+            scheduleIconSync()
         }
     }
 
@@ -26,6 +27,7 @@ final class ActivityMonitor: ObservableObject {
     private let foregroundCollector = ForegroundApplicationCollector()
     private let mediaCollector = NowPlayingCollector()
     private let realtime = RealtimeClient()
+    private let iconSync = ApplicationIconSyncClient()
     private var currentMedia: NowPlayingActivity?
     private var timer: Timer?
     private var workspaceObservers: [NSObjectProtocol] = []
@@ -35,6 +37,8 @@ final class ActivityMonitor: ObservableObject {
     private var lastMediaPollAt = Date.distantPast
     private var isMediaPollInFlight = false
     private var lastDisconnectedEventAt = Date.distantPast
+    private var iconSyncEndpoint: URL?
+    private var iconSyncTask: Task<Void, Never>?
 
     init(store: ActivityStore = ActivityStore()) {
         self.store = store
@@ -134,17 +138,24 @@ final class ActivityMonitor: ObservableObject {
             guard let self else { return }
             let previous = self.connectionState
             self.connectionState = state
+            if state != .connected {
+                self.iconSyncTask?.cancel()
+                self.iconSyncTask = nil
+                self.iconSyncEndpoint = nil
+            }
             if state == .disconnected, previous != .disconnected,
                Date().timeIntervalSince(self.lastDisconnectedEventAt) > 10 {
                 self.lastDisconnectedEventAt = Date()
                 self.record(.disconnected, detail: "等待自动重连")
             }
         }
-        realtime.onReady = { [weak self] heartbeat, _ in
+        realtime.onReady = { [weak self] heartbeat, _, iconSyncEndpoint in
             guard let self else { return }
             self.heartbeatInterval = max(10, heartbeat)
+            self.iconSyncEndpoint = iconSyncEndpoint.flatMap(URL.init(string:))
             self.record(.connected, detail: "activity.v1 握手完成")
             self.sendSnapshot()
+            self.scheduleIconSync()
         }
         realtime.onError = { [weak self] message in
             self?.lastError = message
@@ -213,6 +224,7 @@ final class ActivityMonitor: ObservableObject {
             if nextMedia != self.currentMedia {
                 self.currentMedia = nextMedia
                 self.rebuildPublicSlots(sendIfChanged: true)
+                self.scheduleIconSync()
             }
         }
     }
@@ -263,6 +275,59 @@ final class ActivityMonitor: ObservableObject {
                 self?.lastError = error.localizedDescription
             }
         }
+    }
+
+    private func scheduleIconSync() {
+        guard connectionState == .connected, iconSyncEndpoint != nil else { return }
+        iconSyncTask?.cancel()
+        iconSyncTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: .milliseconds(400))
+                guard let self, let endpoint = self.iconSyncEndpoint else { return }
+                let result = try await self.iconSync.sync(
+                    applications: self.iconSyncCandidates(),
+                    endpoint: endpoint,
+                    token: self.token
+                )
+                guard !Task.isCancelled else { return }
+                if result.enabled, result.uploadedCount > 0 {
+                    self.record(
+                        .iconsSynced,
+                        detail: "已上传 \(result.uploadedCount) 个应用图标，\(result.unchangedCount) 个无需更新"
+                    )
+                }
+                self.iconSyncTask = nil
+            } catch is CancellationError {
+                return
+            } catch {
+                guard let self, !Task.isCancelled else { return }
+                self.lastError = "图标同步失败：\(error.localizedDescription)"
+                self.iconSyncTask = nil
+            }
+        }
+    }
+
+    private func iconSyncCandidates() -> [ApplicationIconCandidate] {
+        var candidates: [ApplicationIconCandidate] = []
+        var seenAppIds = Set<String>()
+        for application in settings.allowlistedApplications {
+            let appIdKey = application.bundleIdentifier.lowercased()
+            guard seenAppIds.insert(appIdKey).inserted else { continue }
+            candidates.append(ApplicationIconCandidate(
+                appId: application.bundleIdentifier,
+                displayName: String(application.title.prefix(80))
+            ))
+        }
+        if settings.publishSourceApplication,
+           let sourceAppId = currentMedia?.sourceAppId,
+           let source = currentMedia?.source,
+           seenAppIds.insert(sourceAppId.lowercased()).inserted {
+            candidates.append(ApplicationIconCandidate(
+                appId: sourceAppId,
+                displayName: String(source.prefix(80))
+            ))
+        }
+        return candidates
     }
 
     private func prepareForInactivity() {

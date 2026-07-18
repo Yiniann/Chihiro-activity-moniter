@@ -95,6 +95,14 @@ struct ActivityAgentTests {
         #expect((object["slots"] as? [[String: Any]])?.count == 1)
     }
 
+    @Test func advertisesAndDecodesApplicationIconSync() throws {
+        #expect(AgentHello.current.capabilities.contains("application-icons"))
+        let data = Data(#"{"type":"server:ready","heartbeatInterval":30,"stateTtl":90,"iconSyncEndpoint":"https://blog.example.com/api/activity/icons"}"#.utf8)
+        let message = try JSONDecoder().decode(ServerMessage.self, from: data)
+
+        #expect(message.iconSyncEndpoint == "https://blog.example.com/api/activity/icons")
+    }
+
     @Test func mediaPolicyCanSuppressArtist() {
         var settings = MonitorSettings.defaults
         settings.mediaEnabled = true
