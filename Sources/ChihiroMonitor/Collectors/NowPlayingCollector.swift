@@ -89,13 +89,19 @@ final class NowPlayingCollector: @unchecked Sendable {
             set trackArtist to artist of current track
             set trackPosition to -1
             set trackDuration to -1
+            set trackArtwork to missing value
             try
                 set trackPosition to player position
             end try
             try
                 set trackDuration to duration of current track
             end try
-            return {trackTitle, trackArtist, trackPosition, trackDuration}
+            try
+                if (count of artworks of current track) > 0 then
+                    set trackArtwork to raw data of artwork 1 of current track
+                end if
+            end try
+            return {trackTitle, trackArtist, trackPosition, trackDuration, trackArtwork}
         end tell
         """
         guard let script = NSAppleScript(source: source) else { return nil }
@@ -107,6 +113,7 @@ final class NowPlayingCollector: @unchecked Sendable {
         let artist = result.atIndex(2)?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
         let positionSeconds = Self.normalizedPosition(result.atIndex(3)?.doubleValue)
         let durationSeconds = Self.normalizedDuration(result.atIndex(4)?.doubleValue)
+        let artwork = Self.appleMusicArtwork(from: result.atIndex(5)?.data)
 
         return NowPlayingActivity(
             kind: .music,
@@ -117,8 +124,14 @@ final class NowPlayingCollector: @unchecked Sendable {
             positionSeconds: positionSeconds.map { min($0, durationSeconds ?? $0) },
             durationSeconds: durationSeconds,
             playbackRate: 1,
-            positionUpdatedAt: positionSeconds == nil ? nil : Date()
+            positionUpdatedAt: positionSeconds == nil ? nil : Date(),
+            artwork: artwork
         )
+    }
+
+    nonisolated static func appleMusicArtwork(from data: Data?) -> NowPlayingArtwork? {
+        guard let data, !data.isEmpty, data.count <= 10 * 1024 * 1024 else { return nil }
+        return NowPlayingArtwork(data: data, identifier: nil)
     }
 
     nonisolated static func currentPlaybackPosition(

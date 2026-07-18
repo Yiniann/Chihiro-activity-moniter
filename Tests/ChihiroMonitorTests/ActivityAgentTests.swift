@@ -169,6 +169,14 @@ struct ActivityAgentTests {
         #expect(NowPlayingCollector.classifyMediaKind(mediaType: NSNumber(value: 99), isMusicApp: nil) == .media)
     }
 
+    @Test func acceptsArtworkFromAppleMusicFallback() {
+        let pngHeader = Data([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+
+        #expect(NowPlayingCollector.appleMusicArtwork(from: pngHeader)?.data == pngHeader)
+        #expect(NowPlayingCollector.appleMusicArtwork(from: Data()) == nil)
+        #expect(NowPlayingCollector.appleMusicArtwork(from: nil) == nil)
+    }
+
     @Test func derivesAndPublishesNowPlayingProgressConservatively() {
         let observedAt = Date(timeIntervalSince1970: 1_000)
         let position = NowPlayingCollector.currentPlaybackPosition(
